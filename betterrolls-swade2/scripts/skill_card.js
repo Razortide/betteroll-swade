@@ -1,10 +1,21 @@
 // Functions for cards representing skills
 
-import {BRSW_CONST, BRWSRoll, create_common_card, get_action_from_click,
-    get_actor_from_ids, get_actor_from_message, roll_trait, spend_bennie,
-    trait_to_string} from "./cards_common.js";
+import {
+    BRSW_CONST,
+    BRWSRoll,
+    create_common_card,
+    get_action_from_click,
+    get_actor_from_ids,
+    get_actor_from_message,
+    roll_trait,
+    spend_bennie,
+    trait_to_string
+} from "./cards_common.js";
 
 export const FIGHTING_SKILLS = ["fighting", "kämpfen", "pelear", "combat"];
+export const SHOOTING_SKILLS = ["shooting", "schiessen", "disparar", "tir"];
+export const THROWING_SKILLS = ["athletics", "athletik", "atletismo", "athletisme",
+    "athlétisme", "★ athletics"];
 
 /**
 * Creates a chat card for a skill
@@ -16,14 +27,14 @@ export const FIGHTING_SKILLS = ["fighting", "kämpfen", "pelear", "combat"];
 async function create_skill_card(origin, skill_id) {
     const actor = origin.hasOwnProperty('actor')?origin.actor:origin;
     const skill = actor.items.find(item => {return item.id === skill_id});
-    const notes = skill.name + ' ' + trait_to_string(skill.data.data)
+    const extra_name = skill.name + ' ' + trait_to_string(skill.data.data)
     const footer = [game.i18n.localize('BRSW.Attribute') + ": " + skill.data.data.attribute]
     let trait_roll = new BRWSRoll();
     let message = await create_common_card(origin, {header:
                 {type: game.i18n.localize("ITEM.TypeSkill"),
-                    title: skill.name, notes: notes, img: skill.img},
-            footer: footer, description: skill.data.data.description,
-            trait_roll: trait_roll}, CONST.CHAT_MESSAGE_TYPES.IC,
+                    title: extra_name, img: skill.img},
+            footer: footer, trait_roll: trait_roll},
+        CONST.CHAT_MESSAGE_TYPES.ROLL,
         "modules/betterrolls-swade2/templates/skill_card.html")
     await message.setFlag('betterrolls-swade2', 'skill_id',
         skill_id)
@@ -157,27 +168,81 @@ export function is_skill_fighting(skill) {
     return FIGHTING_SKILLS.includes(skill.name.toLowerCase());
 }
 
+/***
+ * Checks if a skill is shooting.
+ * @param skill
+ * @return {boolean}
+ */
+export function is_shooting_skill(skill) {
+    let shooting_names = SHOOTING_SKILLS;
+    shooting_names.push(game.i18n.localize("BRSW.ShootingSkill"));
+    return shooting_names.includes(skill.name.toLowerCase());
+}
+
+/***
+ * Checks if a skill is throwing
+ * @param skill
+ * @return {boolean}
+ */
+export function is_throwing_skill(skill) {
+    let shooting_names = THROWING_SKILLS;
+    shooting_names.push(game.i18n.localize("BRSW.ThrowingSkill"));
+    return shooting_names.includes(skill.name.toLowerCase());
+}
 
 /**
  * Get a target number and modifiers from a token appropriated to a skill
  *
  * @param {Item} skill
- * @param {Token} token
+ * @param {Token} target_token
+ * @param {Token} origin_token
+ * @param {SwadeItem} item
  */
-export function get_tn_from_token(skill, token) {
-    // For now we only support parry
+export function get_tn_from_token(skill, target_token, origin_token, item) {
     let tn = {reason: game.i18n.localize("BRSW.Default"), value: 4,
         modifiers:[]};
+    let use_parry_as_tn = false;
     if (is_skill_fighting(skill)) {
-        tn.reason = `${game.i18n.localize("SWADE.Parry")} - ${token.name}`;
-        tn.value = parseInt(token.actor.data.data.stats.parry.value);
+        use_parry_as_tn = true;
+    } else if (is_shooting_skill(skill) || is_throwing_skill(skill)) {
+        const grid_unit = canvas.grid.grid.options.dimensions.distance
+        let distance = canvas.grid.measureDistance(
+            origin_token, target_token, {gridSpaces: true})
+        if (distance < grid_unit * 2) {
+            use_parry_as_tn = true;
+        } else if (item) {
+            const range = item.data.data.range.split('/')
+            distance = distance / grid_unit;
+            let distance_penalty = 0;
+            for (let i=0; i<3 && i<range.length; i++) {
+                let range_int = parseInt(range[i])
+                if (range_int && range_int < distance) {
+                    distance_penalty = i < 2 ? (i + 1) * 2 : 8;
+                }
+            }
+            if (distance_penalty) {
+                tn.modifiers.push(
+                    {'name': game.i18n.localize("BRSW.Range") + " " +
+                            distance.toFixed(2),
+                    'value': - distance_penalty})
+            }
+        }
+    }
+    if (use_parry_as_tn) {
+        tn.reason = `${game.i18n.localize("SWADE.Parry")} - ${target_token.name}`;
+        tn.value = parseInt(target_token.actor.data.data.stats.parry.value);
+        const parry_mod = parseInt(target_token.actor.data.data.stats.parry.modifier);
+        if (parry_mod) {
+            tn.value += parry_mod;
+        }
     }
     // noinspection JSUnresolvedVariable
-    if (token.actor.data.data.status.isVulnerable ||
-            token.actor.data.data.status.isStunned) {
+    if (target_token.actor.data.data.status.isVulnerable ||
+            target_token.actor.data.data.status.isStunned) {
         tn.modifiers.push(
-            {name: `${token.name}: ${game.i18n.localize('SWADE.Vuln')}`,
+            {name: `${target_token.name}: ${game.i18n.localize('SWADE.Vuln')}`,
                 value: 2});
     }
     return tn;
 }
+

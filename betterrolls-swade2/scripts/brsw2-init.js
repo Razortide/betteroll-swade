@@ -8,7 +8,9 @@ import {skill_card_hooks, activate_skill_listeners,
 import {activate_item_listeners, item_card_hooks,
     activate_item_card_listeners} from "./item_card.js";
 import {activate_damage_card_listeners} from "./damage_card.js";
-import {register_actions} from "./global_actions.js";
+import {register_actions, SystemGlobalConfiguration, WorldGlobalActions} from "./global_actions.js";
+import {activate_incapacitation_card_listeners} from "./incapacitation_card.js";
+import {OptionalRulesConfiguration} from "./optinal_rules.js";
 
 // Startup scripts
 
@@ -20,12 +22,11 @@ Hooks.on(`ready`, () => {
     attribute_card_hooks();
     skill_card_hooks();
     item_card_hooks();
-    register_actions();
     register_settings_version2();
+    register_actions();
     // Load partials.
     const templatePaths = ['modules/betterrolls-swade2/templates/common_card_header.html',
         'modules/betterrolls-swade2/templates/common_card_footer.html',
-        'modules/betterrolls-swade2/templates/common_more_options.html',
         'modules/betterrolls-swade2/templates/trait_roll_partial.html',
         'modules/betterrolls-swade2/templates/trait_result_partial.html',
         'modules/betterrolls-swade2/templates/damage_partial.html'];
@@ -71,6 +72,8 @@ Hooks.on('renderChatMessage', (message, html) => {
             activate_item_card_listeners(message, html);
         } else if (card_type === BRSW_CONST.TYPE_DMG_CARD) {
             activate_damage_card_listeners(message, html);
+        } else if (card_type === BRSW_CONST.TYPE_INC_CARD) {
+            activate_incapacitation_card_listeners(message, html);
         }
         // Hide forms to non master, non owner
         if (game.user.id !== message.data.user && !game.user.isGM) {
@@ -79,6 +82,13 @@ Hooks.on('renderChatMessage', (message, html) => {
         // Hide master only sections
         if (!game.user.isGM) {
             html.find('.brsw-master-only').remove();
+        }
+        // Scroll the chat to the bottom if this is the last message
+        if (game.messages.entities[game.messages.entities.length - 1] === message) {
+            let chat_bar = $('#chat-log');
+            if ((chat_bar[0].scrollHeight - chat_bar.height() * 2) < chat_bar[0].scrollTop){
+                chat_bar[0].scrollTop = chat_bar[0].scrollHeight;
+            }
         }
     }
 });
@@ -160,12 +170,58 @@ Hooks.on("renderCharacterSheet", (sheet, html, _) => {
         activate_attribute_listeners(app, html);
         activate_skill_listeners(app, html);
         activate_item_listeners(app, html);
+        if (name === 'SwadeNPCSheet') {
+            // Edit with right click, like skills.
+            html.find('.item').on('contextmenu', (ev) => {
+                const actor = app.token?app.token.actor:app.object;
+                const item = actor.getOwnedItem(ev.currentTarget.dataset.itemId);
+                item.sheet.render(true);
+        });
+        }
     })
 })
+
 
 // Settings
 
 function register_settings_version2() {
+    game.settings.registerMenu('betterrolls-swade2', 'system_global_actions', {
+        name: "BRSW.SystemGlobalMenu",
+        label: "BRSW.SystemGlobalMenuLabel",
+        hint: "BRSW.SystemGlobalMenuHint",
+        type: SystemGlobalConfiguration
+    });
+    game.settings.registerMenu('betterrolls-swade2', 'world_global-Menus', {
+       name: "BRSW.WorldGlobalMenu",
+       label: "BRSW.WorldGlobalMenuLabel",
+       hint: "BRSW.WorldGlobalMenuHint",
+       type: WorldGlobalActions
+    });
+    game.settings.registerMenu('betterrolls-swade2', 'optional_rules', {
+        name: "BRSW.OptionalRules",
+        label: "BRSW.OptionalRulesLabel",
+        hint: "BRSW.OptionalRulesHint",
+        type: OptionalRulesConfiguration
+    });
+    game.settings.register('betterrolls-swade2', 'system_action_disabled', {
+        name: "System_Actions_disabled",
+        default: [],
+        type: Array,
+        config: false
+    });
+    game.settings.register('betterrolls-swade2', 'optional_rules_enabled', {
+        name: "Optional rules enabled",
+        default: [],
+        type: Array,
+        config: false
+    });
+    game.settings.register('betterrolls-swade2', 'world_global_actions', {
+        name: "World global actions",
+        default: [],
+        type: Array,
+        config: false,
+        scope: "world"
+    });
     const br_choices = {
         system: game.i18n.localize('BRSW.Default_system_roll'),
         card: game.i18n.localize('BRSW.Show_Betterrolls_card'),
@@ -286,8 +342,8 @@ function register_dsn_settings(){
         let damage_theme_choice = Object.assign({}, theme_choice);
         damage_theme_choice['None'] = 'None';
         game.settings.register('betterrolls-swade2', 'damageDieTheme', {
-            name: 'Damage dice theme',
-            hint: "Choose a theme from Dice So Nice for damage dice",
+            name: game.i18n.localize("BRSW.DamageDiceTheme"),
+            hint: game.i18n.localize("BRSW.DamageDiceThemeHint"),
             default: "None",
             scope: "client",
             type: String,

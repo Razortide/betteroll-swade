@@ -1,11 +1,22 @@
 // Functions for cards representing all items but skills
+// noinspection JSCheckFunctionSignatures
 
 import {
-    BRSW_CONST, BRWSRoll, check_and_roll_conviction, create_common_card, get_action_from_click,
-    get_actor_from_message, get_roll_options, roll_trait, spend_bennie, trait_to_string, update_message,
-    calculate_results
+    BRSW_CONST,
+    BRWSRoll,
+    calculate_results,
+    check_and_roll_conviction,
+    create_common_card,
+    get_action_from_click,
+    get_actor_from_message,
+    get_roll_options,
+    roll_trait,
+    spend_bennie,
+    trait_to_string,
+    update_message,
+    has_joker
 } from "./cards_common.js";
-import {FIGHTING_SKILLS} from "./skill_card.js"
+import {FIGHTING_SKILLS, SHOOTING_SKILLS, THROWING_SKILLS} from "./skill_card.js"
 import {get_targeted_token, makeExplotable} from "./utils.js";
 import {create_damage_card} from "./damage_card.js";
 import {get_actions, get_global_action_from_name} from "./global_actions.js";
@@ -20,10 +31,7 @@ const ARCANE_SKILLS = ['faith', 'focus', 'spellcasting', `glaube`, 'fokus',
     'hrimmagie', 'gesangsmagie', 'psiónica', 'psionica', 'fe', 'hechicería',
     'hechiceria', 'foi', 'magie', 'science étrange', 'science etrange',
     'élémentalisme', 'elementalisme', 'druidisme', 'magie solaire',
-    'weird science'];
-const SHOOTING_SKILLS = ["shooting", "schiessen", "disparar", "tir"];
-const THROWING_SKILLS = ["athletics", "athletik", "atletismo", "athletisme",
-    "athlétisme", "★ athletics"];
+    'weird science', 'voidomancy'];
 const UNTRAINED_SKILLS = ["untrained", "untrainiert", "desentrenada",
     "non entraine", "non entrainé"];
 
@@ -34,9 +42,10 @@ const ROF_BULLETS = {1: 1, 2: 5, 3: 10, 4: 20, 5: 40, 6: 50}
 *
 * @param {Token, SwadeActor} origin  The actor or token owning the attribute
 * @param {string} item_id The id of the item that we want to show
+* @param {boolean} collapse_actions True if the action selector should start collapsed
 * @return A promise for the ChatMessage object
 */
-async function create_item_card(origin, item_id) {
+async function create_item_card(origin, item_id, collapse_actions) {
     const actor = origin.hasOwnProperty('actor')?origin.actor:origin;
     const item = actor.items.find(item => {return item.id === item_id});
     let footer = make_item_footer(item);
@@ -89,15 +98,15 @@ async function create_item_card(origin, item_id) {
             {code: global_action.name, name: button_name, pinned: false,
                 damage_icon: has_dmg_mod, skill_icon: has_skill_mod});
     })
-    console.log(actions)
     let message = await create_common_card(origin,
         {header: {type: 'Item', title: item.name,
-            notes: notes, img: item.img}, footer: footer, damage: damage,
-            description: item.data.data.description, skill: skill,
-            skill_title: skill_title, ammo: ammo, subtract_selected: subtract_select,
-            subtract_pp: subtract_pp_select, trait_roll: trait_roll, damage_rolls: [],
-            powerpoints: power_points, actions: actions},
-            CONST.CHAT_MESSAGE_TYPES.IC,
+            img: item.img}, notes: notes,  footer: footer, damage: damage,
+            skill: skill, skill_title: skill_title, ammo: ammo,
+            subtract_selected: subtract_select, subtract_pp: subtract_pp_select,
+            trait_roll: trait_roll, damage_rolls: [],
+            powerpoints: power_points, actions: actions,
+            actions_collapsed: collapse_actions},
+            CONST.CHAT_MESSAGE_TYPES.ROLL,
         "modules/betterrolls-swade2/templates/item_card.html")
     await message.setFlag('betterrolls-swade2', 'item_id',
         item_id)
@@ -158,8 +167,13 @@ async function item_click_listener(ev, target) {
     // First term for PC, second one for NPCs
     const item_id = ev.currentTarget.parentElement.parentElement.dataset.itemId ||
         ev.currentTarget.parentElement.dataset.itemId
+    const collapse_actions = action.includes('trait') || action.includes('damage');
     // Show card
-    let message = await create_item_card(target, item_id);
+    let message = await create_item_card(target, item_id, collapse_actions);
+    // Shortcut for rolling damage
+    if (ev.currentTarget.classList.contains('damage-roll')) {
+        await roll_dmg(message, '', false, false);
+    }
     if (action.includes('trait')) {
         await roll_item(message, '', false,
             action.includes('damage'));
@@ -174,7 +188,7 @@ async function item_click_listener(ev, target) {
  */
 export function activate_item_listeners(app, html) {
     let target = app.token?app.token:app.object;
-    const item_images = html.find('.item-image, .item-img, .item.flexrow > img');
+    const item_images = html.find('.item-image, .item-img, .name.item-show, span.item>.item-control.item-edit, .gear-card>.card-header>.item-name, .damage-roll, .item-name>h4, .power-header>.item-name');
     item_images.bindFirst('click', async ev => {
         await item_click_listener(ev, target);
     });
@@ -184,8 +198,13 @@ export function activate_item_listeners(app, html) {
         const item_id = ev.currentTarget.dataset.itemId;
         const token_id = app.token ? app.token.id : '';
         const actor_id = app.object ? app.object.id : '';
-        const actor = game.actors.get(actor_id);
-        const item = actor.getOwnedItem(item_id);
+        let actor = game.actors.get(actor_id);
+        let item = actor.getOwnedItem(item_id);
+        if (!actor || !item) {
+            // Fallback to token
+           actor = canvas.tokens.get(token_id);
+           item = actor.actor.getOwnedItem(item_id);
+        }
         const macro_data = {name: `${actor.name}: ${item.name}`, img: item.img,
             type: "script", scope: "global"};
         macro_data.command =
@@ -194,7 +213,6 @@ export function activate_item_listeners(app, html) {
         ev.originalEvent.dataTransfer.setData(
             'text/plain', JSON.stringify({type:'Macro', data: macro_data}));
     });
-
 }
 
 
@@ -349,7 +367,8 @@ export function get_item_skill(item, actor) {
 function skill_from_string(actor, skill_name) {
     let skill = actor.items.find(skill => {
         return skill.name.toLowerCase().replace('★ ', '') ===
-            skill_name.toLowerCase().replace('★ ', '');
+            skill_name.toLowerCase().replace('★ ', '')
+            && skill.type === 'skill';
     });
     if (!skill) {
         // No skill was found, we try to find untrained
@@ -403,15 +422,23 @@ async function discount_ammo(item, rof, shot_override) {
  *
  * @param {SwadeActor }actor
  * @param item
+ * @param {Roll[]} rolls
  */
-async function discount_pp(actor, item) {
-    const pp = parseInt(item.data.data.pp);
+async function discount_pp(actor, item, rolls) {
+    let success = false;
+    for (let roll of rolls) {
+        if (roll.result >= 4) {
+            success = true
+        }
+    }
+    const pp = success ? parseInt(item.data.data.pp) : 1;
     // noinspection JSUnresolvedVariable
     const current_pp = actor.data.data.powerPoints.value;
     const final_pp = Math.max(current_pp - pp, 0);
-    let content = `<p>${pp} power points have been expended by ${actor.name}. ${final_pp} remaining</p>`;
+    let content = game.i18n.format("BRSW.ExpendedPoints",
+        {name: actor.name, final_pp: final_pp, pp: pp});
     if (current_pp < pp) {
-        content = '<p class="brsw-fumble-row">Not enough PP!</p>' +  content;
+        content = game.i18n.localize("BRSW.NotEnoughPP") +  content;
     }
     await actor.update({'data.powerPoints.value': final_pp});
     await ChatMessage.create({
@@ -460,8 +487,11 @@ export async function roll_item(message, html, expend_bennie,
             // noinspection JSUnresolvedVariable
             if (action.skillMod) {
                 let modifier = {name: action.name, value: parseInt(action.skillMod)};
-                extra_data.modifiers = extra_data.modifiers ?
-                    extra_data.modifiers.push(modifier) : [modifier];
+                if (extra_data.modifiers) {
+                    extra_data.modifiers.push(modifier);
+                } else {
+                    extra_data.modifiers = [modifier];
+                }
             }
             // noinspection JSUnresolvedVariable
             if (action.skillOverride) {
@@ -506,9 +536,11 @@ export async function roll_item(message, html, expend_bennie,
     const pp_selected = html ? html.find('.brws-selected.brsw-pp-toggle').length :
         game.settings.get('betterrolls-swade2', 'default-pp-management');
     if (parseInt(item.data.data.pp) && pp_selected && !trait_data.old_rolls.length) {
-        await discount_pp(actor, item);
+        await discount_pp(actor, item, trait_data.rolls);
     }
     await update_message(message, actor, render_data);
+    //Call a hook after roll for other modules
+    Hooks.call("BRSW-RollItem", message, html );
     if (roll_damage) {
         trait_data.rolls.forEach(roll => {
             if (roll.result >= roll.tn && roll.tn > 0) {
@@ -683,6 +715,11 @@ export async function roll_dmg(message, html, expend_bennie, default_options, ra
         });
         total_modifiers += mod_value
     }
+    // Joker
+    if (has_joker(message.getFlag('betterrolls-swade2', 'token'))) {
+        damage_roll.brswroll.modifiers.push({name: 'Joker', value: 2});
+        total_modifiers += 2;
+    }
     // Actions
     let pinned_actions = [];
     if (html) {
@@ -792,7 +829,7 @@ export async function roll_dmg(message, html, expend_bennie, default_options, ra
             users = message.data.whisper;
         }
         // noinspection ES6MissingAwait
-        game.dice3d.showForRoll(roll, game.user, true, users);
+        await game.dice3d.showForRoll(roll, game.user, true, users);
     }
     damage_roll.damage_result = calculate_results(damage_roll.brswroll.rolls, true);
     await update_message(message, actor, render_data);
@@ -879,14 +916,13 @@ function manual_pp(actor) {
     const ppm = actor.data.data.powerPoints.max;
     const fv = actor.data.data.fatigue.value;
     const fm = actor.data.data.fatigue.max;
+    const ammout_pp = game.i18n.localize("BRSW.AmmountPP");
     new Dialog({
-        title: 'Power Point Management',
-        content: `<form>
-            <div class="form-group">
-                <label for="num">Amount of Power Points: </label>
-                <input id="num" name="num" type="number" min="0" value="5">
-            </div>
-        </form>`,
+        title: game.i18n.localize("BRSW.PPManagement"),
+        content: `<form> <div class="form-group"> 
+            <label for="num">${ammout_pp}: </label>
+             <input id="num" name="num" type="number" min="0" value="5">
+              </div> </form>`,
         default: 'one',
         buttons: {
             one: {
@@ -971,7 +1007,7 @@ function manual_pp(actor) {
                 }
             },
             four: {
-                label: "Soul Drain",
+                label: game.i18n.localize("BRSW.SoulDrain"),
                 callback: () => {
                     //Button 4: Soul Drain (increases data.fatigue.value by 1 and increases the data.powerPoints.value by 5 but does not increase it above the number given in data.powerPoints.max)
                     let newFV = fv + 1

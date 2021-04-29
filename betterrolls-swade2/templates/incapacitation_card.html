@@ -1,0 +1,25 @@
+{{>"modules/betterrolls-swade2/templates/common_card_header.html"}}
+<hr>
+<div>
+    {{{ text }}} {{{ text_after }}}
+</div>
+{{# if trait_roll.rolls }}
+    {{>"modules/betterrolls-swade2/templates/trait_roll_partial.html"}}
+    {{>"modules/betterrolls-swade2/templates/trait_result_partial.html"}}
+{{ else }}
+    <hr>
+    <div class="brsw-button-row brsw-form">
+        <button class="brsw-vigor-button">
+            {{ localize 'BRSW.IncapacitationRoll' }}
+        </button>
+    </div>
+{{/if}}
+{{# if show_roll_injury }}
+    <hr>
+    <div class="brsw-button-row brsw-form">
+        <button class="brsw-injury-button">
+            {{ localize 'BRSW.RollInjury' }}
+        </button>
+    </div>
+{{/if}}
+{{>"modules/betterrolls-swade2/templates/common_card_footer.html"}}

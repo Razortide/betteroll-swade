@@ -10,6 +10,8 @@ export const BRSW_CONST = {
     TYPE_SKILL_CARD: 2,
     TYPE_ITEM_CARD: 3,
     TYPE_DMG_CARD: 10,
+    TYPE_INC_CARD: 11,
+    TYPE_INJ_CARD: 12,
     TYPE_RESULT_CARD: 100,
 };
 
@@ -22,6 +24,7 @@ export function BRWSRoll() {
         // extra_class, tn, result_txt, result_icons, ap, armor, target_id}
     this.modifiers = []; // Array of modifiers {name,  value, extra_class}
     this.dice = []; // Array with the dice {sides, results: [int], label, extra_class}
+    // noinspection JSUnusedGlobalSymbols
     this.is_fumble = false
     this.old_rolls = [] // Array with an array of old rolls.
 }
@@ -62,7 +65,7 @@ export async function create_common_card(origin, render_data, chat_type, templat
     let actor = origin.hasOwnProperty('actor')?origin.actor:origin;
     let render_object = create_render_options(
         actor, render_data)
-    let chatData = create_basic_chat_data(actor, chat_type);
+    let chatData = create_basic_chat_data(origin, chat_type);
     chatData.content = await renderTemplate(template, render_object);
     let message = await ChatMessage.create(chatData);
     // Remove actor to store the render data.
@@ -81,11 +84,22 @@ export async function create_common_card(origin, render_data, chat_type, templat
 
 /**
 * Creates the basic chat data common to most cards
-* @param {SwadeActor} actor:  The actor origin of the message
+* @param {SwadeActor, Token} origin:  The actor origin of the message
 * @param {int} type: The type of message
 * @return An object suitable to create a ChatMessage
 */
-export function create_basic_chat_data(actor, type){
+export function create_basic_chat_data(origin, type){
+    let actor;
+    let token;
+    if (origin.hasOwnProperty('actor')) {
+        // This is a token
+        actor = origin.actor;
+        token = origin;
+    } else {
+        // This is an actor
+        actor = origin;
+        token = actor.token;
+    }
     let whisper_data = getWhisperData();
     // noinspection JSUnresolvedVariable
     let chatData = {
@@ -93,8 +107,8 @@ export function create_basic_chat_data(actor, type){
         content: '<p>Default content, likely an error in Better Rolls</p>',
         speaker: {
             actor: actor._idx,
-            token: actor.token,
-            alias: actor.name
+            token: token,
+            alias: origin.name
         },
         type: type,
         blind: whisper_data.blind
@@ -225,7 +239,7 @@ export function activate_common_listeners(message, html) {
     html.find('.brsw-add-modifier').click(() => {
         const label_mod = game.i18n.localize("BRSW.Modifier");
         simple_form(game.i18n.localize("BRSW.AddModifier"),
-            [{label: 'Label', default_value: ''},
+            [{label: game.i18n.localize("BRSW.Label"), default_value: ''},
                 {label: label_mod,
                 default_value: 1}], async values => {
                 await add_modifier(message, {label: values.Label,
@@ -375,30 +389,11 @@ export function get_action_from_click(event){
  * @param old_options: Options used as default
  */
 export function get_roll_options(html, old_options){
-    html = $(html)
     let modifiers = old_options.additionalMods || [];
     let dmg_modifiers = old_options.dmgMods || [];
     let tn = old_options.tn || 4;
     let tn_reason = old_options.tn_reason || game.i18n.localize("BRSW.Default");
     let rof = old_options.rof || 1;
-    // noinspection JSUnresolvedFunction
-    html.find('.brsw-input-options').each((_, element) => {
-        if (element.value) {
-            if (element.dataset.type === 'modifier') {
-                // Modifiers need to start by a math symbol
-                if (element.value.slice(0, 1) === '+'
-                        || element.value.slice(0, 1) === '-') {
-                    modifiers.push(element.value);
-                } else {
-                    modifiers.push('+' + element.value);
-                }
-            } else if (element.dataset.type === 'tn') {
-                tn = parseInt(element.value) || 0;
-            } else if (element.dataset.type === 'rof') {
-                rof = parseInt(element.value) || 1;
-            }
-        }
-    })
     // We only check for modifiers when there are no old ones.
     if (! old_options.hasOwnProperty('additionalMods')) {
         $('.brsw-chat-form .brws-selectable.brws-selected').each((_, element) => {
@@ -429,7 +424,7 @@ export function get_roll_options(html, old_options){
  * @param trait
  */
 export function trait_to_string(trait) {
-    let string = `${name} d${trait.die.sides}`;
+    let string = `d${trait.die.sides}`;
     let modifier = parseInt(
         trait.die.modifier);
     if (modifier) {
@@ -568,7 +563,12 @@ export async function roll_trait(message, trait_dice, dice_label, html, extra_da
         }
         let skill = get_skill_from_message(message, actor);
         if (objetive && skill) {
-            const target_data = get_tn_from_token(skill, objetive);
+            const token_id = message.getFlag('betterrolls-swade2', 'token')
+            const origin_token = token_id ? canvas.tokens.get(token_id) :
+                actor.getActiveTokens()[0]
+            const item = get_item_from_message(message, actor)
+            const target_data = get_tn_from_token(
+                skill, objetive, origin_token, item);
             extra_options.tn = target_data.value;
             extra_options.tn_reason = target_data.reason;
             extra_options.target_modifiers = target_data.modifiers;
@@ -771,7 +771,7 @@ export async function roll_trait(message, trait_dice, dice_label, html, extra_da
             users = message.data.whisper;
         }
         // noinspection ES6MissingAwait
-        game.dice3d.showForRoll(roll, game.user, true, users);
+        await game.dice3d.showForRoll(roll, game.user, true, users);
     }
     // Calculate results
     if (!render_data.trait_roll.is_fumble) {
@@ -952,8 +952,8 @@ async function edit_tn(message, index, new_tn, reason) {
  */
 function get_tn_from_target(message, index, selected) {
     let objetive;
+    let actor = get_actor_from_message(message);
     if (selected) {
-        let actor = get_actor_from_message(message);
         canvas.tokens.controlled.forEach(token => {
             // noinspection JSUnresolvedVariable
             if (token.actor !== actor) {
@@ -964,8 +964,12 @@ function get_tn_from_target(message, index, selected) {
         objetive = get_targeted_token();
     }
     if (objetive) {
+        const token_id = message.getFlag('betterrolls-swade2', 'token')
+        const item = get_item_from_message(message, actor)
+        const origin_token = token_id ? canvas.tokens.get(token_id) :
+                actor.getActiveTokens()[0]
         const skill = get_skill_from_message(message, get_actor_from_message(message));
-        const target = get_tn_from_token(skill, objetive);
+        const target = get_tn_from_token(skill, objetive, origin_token, item);
         if (target.value) {
             // Don't update if we didn't get a value
             // noinspection JSIgnoredPromiseFromCall
@@ -979,11 +983,11 @@ function get_tn_from_target(message, index, selected) {
  * @param token_id
  * @return {boolean}
  */
-function has_joker(token_id) {
+export function has_joker(token_id) {
     let joker = false;
     game.combat?.combatants.forEach(combatant => {
         if (combatant.tokenId === token_id) {
-            const swade_value = combatant.flags.swade.cardValue;
+            const swade_value = combatant.flags?.swade?.cardValue || 0;
             if (swade_value >= 95) {
                 joker = true;
             }
@@ -1000,7 +1004,6 @@ function has_joker(token_id) {
  */
 async function duplicate_message(message, event) {
     let data = duplicate(message.data);
-    console.log(data)
     // Remove rolls
     data.timestamp = new Date().getTime();
     data.flags['betterrolls-swade2'].render_data.trait_roll = new BRWSRoll();

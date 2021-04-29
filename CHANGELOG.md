@@ -1,5 +1,65 @@
 # Changelog
 
+## Version 2.26, The late one
+* Lots of translation and spelling fixes
+* Remove "more options" from cards
+* Use parry as difficult to hit adjacent targets with ranged attacks
+* Autoapply distance penalties for ranged attacks
+* Respect DSN configuration about showing the result after or before rolling
+* Joker now modify damage
+* Various sheet fixes
+* Better handling of soak rolls.
+
+## Versio 2.25, World global actions aka What?
+* Added a settings window to create and manage global actions tied to a world.
+* Yet another attempt at having a sane chat scroll
+* Shorter cards.
+
+## Version 2.24, Did I broke Official Sheet?
+* BUGFIX: Skill couldn't be rolled from the Official Sheet.
+* Actions are now  collapsed on direct rolls.
+* There is a window that do nothing in settings from World Global Actions.
+
+## Version 2.23 aka Click Hijacking
+* Add a setting window for optional rules
+* Support Gritty Damage as an optional rule.
+* Actions in the chat card are now collapsable
+* Translations updates.
+* Auto-scroll to see the end of a modified chat card is now more aggresive
+* Apply damage icon changed
+* On the character sheet, on quick access, clicking the item name now shows a better rolls card, please use modifiers to see the default behaviour
+
+
+## Version 2.22 aka les enfants de la Foundry
+* Added the "Voidomancy" arcane Skill from the Sundered Skies Companion (english only). (SalieriC)
+* BUGFIX: Skills and other items of the same name should no longer cause BR to pick the wrong item to roll a Trait from.(SalieriC)
+* Infrastructure work to allow personal global actions
+* BUGFIX: The module didn't roll when multiple actions where selected.
+* Initial support for Manifest+
+* Updated translations for all the supported languages
+* Added French to supported languages.
+* BUGFIX: Chat is forced to scroll when the last card is modified.
+* Better handling of the incapacitation test.
+* Added active effects for the remaining injuries
+* BUGFIX: Use parry modifier when available to calculate TN.
+
+## Version 2.21 aka Injuries!!!!
+* BUGFIX: Betterrolls shouldn't break when in combat an with no card deal
+* Updated Spanish translations
+* Injury card and rolls.
+* Injury that decreases an atribute applied as active effects.
+* Edit Edges, Hindrances and abilities in the NPC sheet with right click (consistent with skills)
+* Show Edges, Hindrances and abilities in the NPC with left clicks
+* Power rolls when failed, and expend PP is activated, deduct just 1 point.
+
+## Version 2.2 aka Scared of 0.8
+* BUGFIS: Some debug info was shown in char card.
+* Incapacitation card.
+* Global actions can be enabled/disabled on settings
+* Global actions for "The Drop" and "Called Shot:Head"
+* Global actions can now be selected by item type.
+* Actor and token names are used with more consistence.
+
 ## Version 2.1 aka Google Übersetzer sagen, dies sollte deutsch sein
 * German translations (Razortide)
 * Updated documentation (Razortide)
